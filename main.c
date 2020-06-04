@@ -75,7 +75,7 @@ void dot(twoD_t *input, const twoD_t *weights, twoD_t *output, data_t (*activati
 			sum = activation(sum);
 		}
         
-        output->data[i] = sum;
+        	output->data[i] = sum;
 	}
 }
 
@@ -85,10 +85,10 @@ data_t reLU(data_t a)
 }
 
 // only works when stride = r = c
-void conv2D(twoD_t *input, const twoD_t *kernel, twoD_t *output, data_t (*activation)(data_t), uint32_t stride, uint32_t r, uint32_t c)
+void conv2D(twoD_t *input, const twoD_t *kernel, twoD_t *output, data_t (*activation)(data_t), uint32_t stride, uint32_t r, uint32_t c, uint32_t padding)
 {
-	uint32_t aux_r = input->r - kernel->r + 1;
-	uint32_t aux_c = input->c - kernel->c + 1;
+	uint32_t aux_r = input->r - kernel->r + 1 + 2 * padding;
+	uint32_t aux_c = input->c - kernel->c + 1 + 2 * padding;
 	data_t aux_sum;
 	data_t max_pool;
 
@@ -113,7 +113,19 @@ void conv2D(twoD_t *input, const twoD_t *kernel, twoD_t *output, data_t (*activa
 							{
 								for (uint32_t in_ch = 0; in_ch < input->channel;  in_ch++)
 								{
-									aux_sum += input->data[in_ch * input->r * input->c + (i+i_pool+ii) * input->c + (j+j_pool+jj)] * kernel->data[out_ch * kernel->in_channel * kernel->r * kernel->c + in_ch * kernel->r * kernel->c + ii * kernel->c + jj];
+									data_t in_data;
+									uint32_t sub_i = i + i_pool + ii;
+									uint32_t sub_j = j + j_pool + jj;
+									if ((sub_i < padding) || (sub_j < padding) || (sub_i >= (aux_r+padding)) || (sub_j >= (aux_c+padding)))
+									{
+										in_data  =  0.0;
+									}
+									else
+									{
+
+										in_data = input->data[in_ch * input->r * input->c + (i+i_pool+ii-padding) * input->c + (j+j_pool+jj-padding)];
+									}
+									aux_sum += in_data * kernel->data[out_ch * kernel->in_channel * kernel->r * kernel->c + in_ch * kernel->r * kernel->c + ii * kernel->c + jj];
 								}
 							}
 						}
@@ -156,66 +168,56 @@ int main()
 {
 	twoD_t input, output, output2, output3, output4, output5;
 
-	// Maximum memory usage is 2*max(32*32, 6*14*14, 16*5*5, 120, 84, 10)*sizeof(data_t), ping pong buffer is being used.
-	// Maximum memory usage is 2*max(1024, 1176, 400, 120, 84, 10)*sizeof(data_t), ping pong buffer is being used.
+	// Maximum memory usage is 2*max(3*32*32, 32*16*16, 16*8*8, 32*4*4, 10)*sizeof(data_t), ping pong buffer is being used.
+	// Maximum memory usage is 2*max(3072,    8192,     1024,   512,    10)*sizeof(data_t), ping pong buffer is being used.
 	
-	data_t buffer1[1176] = {0};
-	data_t buffer2[1176] = {0};
+	data_t buffer1[3072];
+	data_t buffer2[8192];
 
 	input.r = input.c = 32;
-	input.channel = 1;
 	input.data = buffer1;
 	input.bias = NULL;
 
-	output.r = output.c = (32-5+1)/2;
-	output.data = buffer2;
+	output.r = output.c = (32-5+1+4)/2;
+	output.data = buffer2; // Must be set here
 	output.bias = NULL;
 
-	output2.r = output2.c = (14-5+1)/2;
+	output2.r = output2.c = (16-5+1+4)/2;
 	output2.data = buffer1;
 	output2.bias = NULL;
 
-	output3.r = 120;
-	output3.c = 1;
+	output3.r = output3.c = (8-5+1+4)/2;
 	output3.data = buffer2;
 	output3.bias = NULL;
 
-	output4.r = 84;
+	output4.r = 4*4*32;
 	output4.c = 1;
 	output4.data = buffer1;
 	output4.bias = NULL;
 
-	output5.r = 10;
-	output5.c = 1;
-	output5.data = buffer2;
-	output5.bias = NULL;
-
 	memcpy(buffer1, test, sizeof(test));
 
-	printf("---LeNet-5 starts---\n");
+	printf("---Network starts---\n");
 
-	input.channel = 1; /* Single channel input 32x32 matrix */
-	output.channel = w_0_weight_2d.channel; /* 6 input channels */
-	conv2D(&input, &w_0_weight_2d, &output, &reLU, 2, 2, 2);
-	// print_twoD(&output, 1);
+	input.channel = 3; /* 3 channel input 32x32 matrix */
+	output.channel = w_0_weight_2d.channel; /* 32 input channels */
+	conv2D(&input, &w_0_weight_2d, &output, &reLU, 2, 2, 2, 2);
+	print_twoD(&output, 1);
 
-	output2.channel = w_3_weight_2d.channel; /* 6 input channels are maped to 16 channels */
-	conv2D(&output, &w_3_weight_2d, &output2, &reLU, 2, 2, 2);
+	output2.channel = w_3_weight_2d.channel; /* 32 input channels are maped to 16 channels */
+	conv2D(&output, &w_3_weight_2d, &output2, &reLU, 2, 2, 2, 2);
 	// print_twoD(&output2, 0);
 
-	output3.channel = w_7_weight_2d.channel; /* Flat single channel output for fully connected layer */
-	dot(&output2, &w_7_weight_2d, &output3, &reLU);
-	//	print_twoD(&output3, 0);
+	output3.channel = w_6_weight_2d.channel; /* 16 input channels are maped to 32 channels */
+	conv2D(&output2, &w_6_weight_2d, &output3, &reLU, 2, 2, 2, 2);
+	// print_twoD(&output3, 0);
 
-	output4.channel = w_9_weight_2d.channel;
-	dot(&output3, &w_9_weight_2d, &output4, &reLU);
-	//	print_twoD(&output4, 0);
+	output4.channel = w_10_weight_2d.channel;
+	dot(&output3, &w_10_weight_2d, &output4, NULL);
 
-	output5.channel = w_11_weight_2d.channel;
-	dot(&output4, &w_11_weight_2d, &output5, NULL);
-	print_twoD(&output5, 0);
-	
-	printf("prediction: %d\n", get_class(&output5));
+	print_twoD(&output4, 0);
+
+	printf("prediction: %d\n", get_class(&output4));
 
 	return 0;
 }
