@@ -159,7 +159,7 @@ int main()
 	// Maximum memory usage is 2*max(32*32, 6*14*14, 16*5*5, 120, 84, 10)*sizeof(data_t), ping pong buffer is being used.
 	// Maximum memory usage is 2*max(1024, 1176, 400, 120, 84, 10)*sizeof(data_t), ping pong buffer is being used.
 	
-	data_t buffer1[1176] = {0};
+	data_t buffer1[1023] = {0};
 	data_t buffer2[1176] = {0};
 
 	input.r = input.c = 32;
